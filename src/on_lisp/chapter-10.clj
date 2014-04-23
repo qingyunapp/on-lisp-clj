@@ -118,10 +118,47 @@ Common Lisp の princ だとこうなる。"
 ;   a
 
 "Clojure っぽく置き換えてみるとこんな感じか。"
-(condlet [(= 1 2)  [x (str 'a) y (str 'b)]
-          (= 1 1)  [y (str 'c) x (str 'd)]
-          :default [x (str 'e) z (str 'f)]]
+(condlet [(= 1 2)  [x (str 'a) y (str 'b) z nil]
+          (= 1 1)  [y (str 'c) x (str 'd) z nil]
+          :default [x (str 'e) z (str 'f) y nil]]
   (list x y z))
+
+"cl-like-do を書いてみた時にもあったのだが、Clojure の let と
+Common Lisp の let の違いとして、後のローカル変数が前のローカル変数を
+参照できる事の他に、変数シンボルのみの宣言もできる点がある。Clojure で例えると、
+デフォルト nil とする declare を let 中で可能と言った感じ。
+(実際の declare ではデフォルト値設定はできないが)
+
+上のマクロ使用イメージコードはローカル declare ライクな機能はナシにしたもので、
+そうすると今回も割と楽にマクロ化できる。"
+(defn cond-clause [test bind body]
+  `(~test
+    (let ~bind
+      ~@body)))
+
+(defmacro condlet [clauses & body]
+  (let [tests (take-nth 2 clauses)
+        binds (take-nth 2 (next clauses))]
+    `(cond
+      ~@(mapcat cond-clause tests binds (repeat body)))))
+
+"これでマクロ使用イメージコードを評価すると (\"d\" \"c\" nil) が返るようになる。"
+
+;;;
+;;; 10.2 with-系マクロ
+;;;
+
+"ここのサンプルは擬似コードで移植する面白みがないので飛ばす。
+
+Clojure の with 系マクロはちょうど例示されてた with-open が参考になる。
+On Lisp の with-db では見られない複数 binding に対応させる時の書き方や
+再帰マクロを使っててこれはこれで面白い。"
+
+
+;;;
+;;; 10.3 条件付き評価
+;;;
+
 
 
 
