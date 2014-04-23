@@ -30,14 +30,13 @@
 ;   3
 ;   nil
 
-"複数回評価を起こし得る状況を Clojure マクロで思いつかないので次へ。
-とは言え Clojure でも有り得るんじゃないかと気には留めておきたい。
+"複数回評価を起こし得る状況を Clojure マクロで思いつかないので次へは進むが、
+Clojure でも有り得るんじゃないかと気には留めておきたい。
 
-だた例示とは言え On Lisp のマクロ呼び出しで incf 使ってるのもあまり良くない。
-これは変数を変更しない 1+ を使えば延々と数字を print する現象は回避できる。
+ところで例示とは言え On Lisp のマクロ呼び出しで incf 使ってるのもあまり良くないんじゃないかな。
+これは変数を変更しない 1+ (Clojure での inc) を使えば延々と数字を出し続ける現象は解消できる。
 
-まあ Mutable な変更を割と許している Common Lisp だとマクロ自体も
-あまりいい書き方じゃないんだろう。"
+Mutable な変更を割と許している Common Lisp あまりいいマクロの書き方じゃないのは確かだろうけど。"
 
 
 ;;;
@@ -63,10 +62,8 @@
 ;   13
 ;   nil
 
-"まあ急いで書いてる時にはこんな書き方するかもしれないから
-注意はしておいた方がいいかな。
-ただ Clojure 的な感覚から言うと破壊的変更をデフォルトで許している事も
-やっぱり問題な気がする。"
+"急いで書いてる時にはこんな書き方するかもしれないからこれも注意はしておきたい。
+でも Clojure 的な感覚から言うと破壊的変更をデフォルトで許している事もやっぱり問題な気がする。"
 
 ;;;
 ;;; 9.3 関数によらないマクロ展開
@@ -92,18 +89,122 @@
 ;=> #'user/string-call
 (defn our+ [x y] (+ x y))
 ;=> #'user/our+
-(string-call "clojure.core/our+" 2 3)
+(string-call "our+" 2 3)
 ;=> 5
 
 "いずれにせよあまり使う方法ではないと思う。
 
 この後 nconc(破壊的 concat) を利用したマクロにおいての危険性についての例示がある。
-Clojure だとありそうなのは transient 使った時かもしれないが、自分は使わないので
+Clojure だとありそうなのは transient 使った時かもしれないが、自分は今の所使わないので
 読み流すだけにした。"
 
 ;;;
 ;;; 9.4 再帰
 ;;;
 
+;; p87
+"Common Lisp の length は Clojure で言う count。"
 
-;~~~~ 更新ここまで ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+(defn our-count [x]
+  (if-not x
+    0
+    (inc (our-count (next x)))))
+
+"但し Clojure は JVM の制限だったか深い再帰をすると StackOverflowError が出る。"
+(our-count (range 1 10000))
+;=> StackOverflowError   clojure.lang.ChunkedCons.next (ChunkedCons.java:41)
+
+"これは末尾再帰な内部関数作って呼ぶようにすれば回避できる。"
+(defn our-count [x]
+  (letfn [(counter [n coll]
+            (if (seq coll)
+              (recur (inc n) (next coll))
+              n))]
+    (counter 0 x)))
+
+(our-count (range 1 10000))
+;=> 9999
+
+"ついでに Clojure の反復版。"
+(defn our-count [x]
+  (loop [n 0
+         y x]
+    (if (seq y)
+      (recur (inc n) (next y))
+      n)))
+
+"nth 例。まずは関数版。引数順は Clojure 版準拠だが :not-found オプション引数はここでは実装しない。
+また図らずも標準と違って IndexOutOfBoundsException は出なくなってる。"
+(defn ntha [coll index]
+  (if (zero? index)
+    (first coll)
+    (recur (rest coll) (dec index))))
+
+"間違った定義である nthb。Clojure でも定義はできるものの実際使うと無限ループになってしまう。"
+(defmacro nthb [coll index]
+  `(if (zero? ~index)
+     (first ~coll)
+     (nthb (rest ~coll) (dec ~index))))
+
+;; p88
+
+"マクロ反復版。あれ、マクロ中でも recur 使えた。loop との対だと大丈夫って事か？"
+(defmacro nthc [coll index]
+  `(loop [c# ~coll
+          i# ~index]
+     (if (zero? i#)
+       (first c#)
+       (recur (next c#) (dec i#)))))
+
+"再帰関数呼び出し版 nthd と、呼び出す関数を内蔵した nthe。
+サンプルと比較して nth-fn が上なのは単に Clojure が上から下への流れで評価される為。"
+
+(defn nth-fn [coll index]
+  (if (zero? index)
+    (first coll)
+    (recur (next coll) (dec index))))
+
+(defmacro nthd [coll index]
+  `(nth-fn ~coll ~index))
+
+(defmacro nthe [coll index]
+  (letfn [(nth-fn [coll index]
+            (if (zero? index)
+              (first coll)
+              (recur (next coll) (dec index))))]
+    `(nth-fn ~coll ~index)))
+
+
+;; p89
+(defn or-expand [args]
+  (if (nil? args)
+    nil
+    (let [sym (gensym)]
+      `(let [~sym ~(first args)]
+         (if ~sym
+           ~sym
+           ~(or-expand (next args)))))))
+
+(defmacro ora [& args]
+  (or-expand args))
+
+"Clojure だとこちらは定義はできても使えず。理由は良く分からんが、
+nthc と違って loop 使ってないからそこの違い？"
+(defmacro orb [& args]
+  (if (nil? args)
+    nil
+    (let [sym (gensym)]
+      `(let [~sym ~(first args)]
+         (if ~sym
+           ~sym
+           (recur ~@(next args)))))))
+
+(orb nil 1)
+;=> CompilerException java.lang.IllegalArgumentException: Mismatched argument count to recur, expected: 0 args, got: 1, compiling:~
+
+(orb nil)
+;=> 無限ループ
+
+"第 9 章 マクロのその他の落し穴"
+
+"はここまで。"
