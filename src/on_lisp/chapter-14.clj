@@ -1,4 +1,4 @@
-(ns on-lisp.chapter-10
+(ns on-lisp.chapter-14
   "On Lisp サンプルマクロの Clojure 実装。
    野田開さんが翻訳された草稿の PDF 版をベースとする。
    PDF 版配布先: http://www.asahi-net.or.jp/~kc7k-nd/
